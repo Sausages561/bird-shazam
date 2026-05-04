@@ -4,13 +4,13 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saco Bird Logger</title>
     <style>
-        body { background: #121212; color: white; font-family: -apple-system, sans-serif; text-align: center; padding: 20px; }
-        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
+        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; }
         #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h1>Saco Bird Logger</h1>
+    <h1>Bird Logger (v3)</h1>
     <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
 
@@ -24,35 +24,31 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const recorder = new MediaRecorder(stream);
                 const chunks = [];
-                
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Transmitting to Google...";
+                    status.innerText = "Transmitting Small Packet...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
                     const reader = new FileReader();
                     reader.readAsDataURL(blob);
                     reader.onloadend = async () => {
-                        const base64 = reader.result.split(',')[1];
-                        
-                        // Send audio string directly to your Google Script
-                        await fetch(SHEET_URL, {
-                            method: 'POST',
-                            mode: 'no-cors',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: 'audio=' + encodeURIComponent(base64)
-                        });
-                        status.innerText = "Check Google Sheet for ID!";
+                        try {
+                            const base64 = reader.result.split(',')[1];
+                            await fetch(SHEET_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: 'audio=' + encodeURIComponent(base64)
+                            });
+                            status.innerText = "Sent! Check Sheet.";
+                        } catch (err) {
+                            status.innerText = "Upload Blocked: " + err.message;
+                        }
                     };
                 };
-
                 recorder.start();
                 btn.style.background = "#ff4444";
-                status.innerText = "Recording...";
-                setTimeout(() => { 
-                    recorder.stop(); 
-                    stream.getTracks().forEach(t => t.stop()); 
-                    btn.style.background = "#1DB954"; 
-                }, 5000);
+                status.innerText = "Recording (1s)...";
+                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 1000);
             } catch (e) { status.innerText = "Mic Error: Check Safari Settings"; }
         };
     </script>
