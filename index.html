@@ -1,16 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saco Bird Logger</title>
     <style>
-        body { background: #121212; color: white; font-family: -apple-system, sans-serif; text-align: center; padding: 20px; }
-        #btn { 
-            width: 180px; height: 180px; border-radius: 50%; border: none; 
-            background: #1DB954; color: white; font-size: 22px; font-weight: bold; 
-            margin-top: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
+        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; }
         #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
     </style>
 </head>
@@ -25,68 +20,31 @@
         const status = document.getElementById('status');
 
         btn.onclick = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const recorder = new MediaRecorder(stream);
-                const chunks = [];
-                
-                recorder.ondataavailable = e => chunks.push(e.data);
-                recorder.onstop = async () => {
-                    status.innerText = "Encoding Signal...";
-                    const blob = new Blob(chunks, { type: 'audio/wav' });
-                    
-                    // Convert Blob to Base64 to bypass "Interference" blocks
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onloadend = async () => {
-                        const base64Data = reader.result.split(',')[1];
-                        sendToProxy(base64Data);
-                    };
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const recorder = new MediaRecorder(stream);
+            const chunks = [];
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = async () => {
+                status.innerText = "Uploading to Cloud...";
+                const blob = new Blob(chunks, { type: 'audio/wav' });
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                reader.onloadend = async () => {
+                    const base64 = reader.result.split(',')[1];
+                    const res = await fetch(SHEET_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // This is safe now because we're talking to Google
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'audio=' + encodeURIComponent(base64)
+                    });
+                    status.innerText = "Sent! Check Sheet in 5s.";
                 };
-
-                recorder.start();
-                btn.style.background = "#ff4444";
-                status.innerText = "Recording...";
-                setTimeout(() => { 
-                    recorder.stop(); 
-                    stream.getTracks().forEach(t => t.stop()); 
-                    btn.style.background = "#1DB954"; 
-                }, 5000);
-            } catch (e) { status.innerText = "Mic Error: Check Settings"; }
+            };
+            recorder.start();
+            btn.style.background = "#ff4444";
+            status.innerText = "Recording...";
+            setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 5000);
         };
-
-        async function sendToProxy(base64) {
-            status.innerText = "Transmitting...";
-            const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-            
-            try {
-                // We wrap the base64 in a standard form that proxies recognize easily
-                const fd = new FormData();
-                fd.append('audio', base64);
-
-                const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(target), {
-                    method: 'POST',
-                    body: fd
-                });
-
-                const data = await res.json();
-                
-                if (data.results && data.results[0]) {
-                    const bird = data.results[0].species_common_name;
-                    const conf = Math.round(data.results[0].confidence * 100);
-                    status.innerText = bird + " (" + conf + "%)";
-                    
-                    // Log to Sheet (The part we know works!)
-                    fetch(`${SHEET_URL}?bird=${encodeURIComponent(bird)}&confidence=${conf}&audioUrl=Cellular-Success`, { mode: 'no-cors' });
-                } else {
-                    status.innerText = "No birds detected.";
-                }
-            } catch (e) {
-                status.innerText = "Signal Error. Check Sheet.";
-                // Log the exact error to your sheet for debugging
-                fetch(`${SHEET_URL}?bird=Error&confidence=0&audioUrl=${encodeURIComponent(e.message)}`, { mode: 'no-cors' });
-            }
-        }
     </script>
 </body>
 </html>
