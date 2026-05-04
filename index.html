@@ -10,7 +10,7 @@
             background: #121212; 
             color: white; 
             text-align: center; 
-            font-family: -apple-system, sans-serif; 
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -28,20 +28,21 @@
             font-size: 26px; 
             font-weight: bold;
             cursor: pointer; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            transition: transform 0.1s;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            -webkit-tap-highlight-color: transparent;
         }
-        #recordBtn:active { transform: scale(0.95); }
-        h1 { margin-bottom: 10px; font-size: 28px; }
-        h2 { font-weight: 300; color: #b3b3b3; margin-top: 20px; }
+        #recordBtn:active { transform: scale(0.95); background: #1ed760; }
+        h1 { margin-bottom: 10px; font-size: 32px; letter-spacing: -1px; }
+        h2 { font-weight: 300; color: #b3b3b3; margin-top: 25px; min-height: 1.5em; }
     </style>
 </head>
 <body>
+
     <h1>Bird ID</h1>
     <button id="recordBtn">LISTEN</button>
-    <h2 id="result">Tap to Start</h2>
+    <h2 id="result">Ready to identify</h2>
 
-    <!-- This script tag MUST be at the bottom -->
+    <!-- THE LINK: This MUST be the last thing before the </body> tag -->
     <script src="app.js"></script>
 </body>
 </html>
