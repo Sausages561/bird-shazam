@@ -1,37 +1,92 @@
-const PIPEDREAM_URL = 'https://eoqh468oz3nen4s.m.pipedream.net';
-const btn = document.getElementById('btn');
-const status = document.getElementById('status');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saco Bird Logger</title>
+    <style>
+        body { 
+            background: #121212; 
+            color: white; 
+            text-align: center; 
+            padding: 50px; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        }
+        #btn { 
+            width: 220px; 
+            height: 220px; 
+            border-radius: 50%; 
+            background: #1DB954; 
+            color: white; 
+            border: none; 
+            font-size: 28px; 
+            font-weight: bold; 
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: transform 0.1s, background 0.3s;
+        }
+        #btn:active { transform: scale(0.95); }
+        #status { margin-top: 30px; font-size: 18px; color: #b3b3b3; }
+    </style>
+</head>
+<body>
+    <h2>Saco Bird Logger</h2>
+    <button id="btn">LISTEN</button>
+    <p id="status">Ready to Record</p>
 
-btn.onclick = async () => {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
-        const chunks = [];
-        recorder.ondataavailable = e => chunks.push(e.data);
-        
-        recorder.onstop = async () => {
-            status.innerText = "Transmitting to Bridge...";
-            const blob = new Blob(chunks, { type: 'audio/wav' });
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = async () => {
-                const base64Data = reader.result.split(',')[1];
-                await fetch(PIPEDREAM_URL, {
-                    method: 'POST',
-                    body: base64Data
-                });
-                status.innerText = "Processing BirdNET...";
-            };
+    <script>
+        // Your specific Pipedream Bridge URL
+        const PIPEDREAM_URL = 'https://eoqh468oz3nen4s.m.pipedream.net';
+        const btn = document.getElementById('btn');
+        const status = document.getElementById('status');
+
+        btn.onclick = async () => {
+            try {
+                // Request microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+                
+                recorder.ondataavailable = e => chunks.push(e.data);
+                
+                recorder.onstop = async () => {
+                    status.innerText = "Transmitting to Bridge...";
+                    const blob = new Blob(chunks, { type: 'audio/wav' });
+                    const reader = new FileReader();
+                    
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = async () => {
+                        // Extract raw Base64 string
+                        const base64Data = reader.result.split(',')[1];
+                        
+                        try {
+                            await fetch(PIPEDREAM_URL, {
+                                method: 'POST',
+                                body: base64Data
+                            });
+                            status.innerText = "Processing via BirdNET...";
+                        } catch (err) {
+                            status.innerText = "Network Error: Bridge unreachable.";
+                        }
+                    };
+                };
+
+                // Start recording
+                recorder.start();
+                btn.style.background = "#ff4444";
+                status.innerText = "Listening to Saco birds...";
+                
+                // Record for exactly 3 seconds
+                setTimeout(() => { 
+                    recorder.stop(); 
+                    stream.getTracks().forEach(t => t.stop()); 
+                    btn.style.background = "#1DB954"; 
+                }, 3000);
+
+            } catch (e) { 
+                status.innerText = "Mic Error: Check permissions."; 
+            }
         };
-
-        recorder.start();
-        btn.style.background = "#ff4444";
-        setTimeout(() => { 
-            recorder.stop(); 
-            stream.getTracks().forEach(t => t.stop()); 
-            btn.style.background = "#1DB954"; 
-        }, 3000); // 3-second sample
-    } catch (e) { 
-        status.innerText = "Mic Error: " + e.message; 
-    }
-};
+    </script>
+</body>
+</html>
