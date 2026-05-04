@@ -1,47 +1,53 @@
 let mediaRecorder;
 let audioChunks = [];
+let isRecording = false;
+
+const recordBtn = document.getElementById('recordBtn');
+const resultText = document.getElementById('result');
 
 recordBtn.addEventListener('click', async () => {
-    if (!isRecording) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
+    console.log("Button clicked!"); // Test Point 1
+    
+    if (isRecording) return; 
 
-            mediaRecorder.ondataavailable = (event) => {
-                audioChunks.push(event.data);
-            };
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
 
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                analyzeBird(audioBlob); // The "Analysis" Route
-            };
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
 
-            // Start recording
-            mediaRecorder.start();
-            isRecording = true;
-            recordBtn.innerText = "LISTENING...";
-            recordBtn.style.background = "#ff4444";
-            resultText.innerText = "Recording (5s)...";
+        mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            console.log("Recording stopped, starting analysis..."); // Test Point 2
+            analyzeBird(audioBlob);
+        };
 
-            // AUTOMATIC 5-SECOND WINDOW
-            setTimeout(() => {
-                if (isRecording) {
-                    mediaRecorder.stop();
-                    // Stop all mic tracks to turn off the green dot on iPhone
-                    stream.getTracks().forEach(track => track.stop());
-                }
-            }, 5000);
+        mediaRecorder.start();
+        isRecording = true;
+        recordBtn.innerText = "LISTENING...";
+        recordBtn.style.background = "#ff4444";
+        resultText.innerText = "Recording (5s)...";
 
-        } catch (err) {
-            resultText.innerText = "Mic access denied.";
-        }
+        setTimeout(() => {
+            if (mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                stream.getTracks().forEach(track => track.stop());
+                isRecording = false;
+            }
+        }, 5000);
+
+    } catch (err) {
+        console.log("Error:", err);
+        resultText.innerText = "Error: " + err;
     }
 });
 
 async function analyzeBird(blob) {
     recordBtn.innerText = "WAIT";
-    resultText.innerText = "Analyzing sound...";
+    resultText.innerText = "Identifying...";
 
     const formData = new FormData();
     formData.append('audio', blob);
@@ -51,25 +57,16 @@ async function analyzeBird(blob) {
             method: 'POST',
             body: formData
         });
-
         const data = await response.json();
-
-        // THE "ROUTE" LOGIC
-        if (data.results && data.results.length > 0 && data.results[0].confidence > 0.5) {
-            // SUCCESS ROUTE
-            const bird = data.results[0].species_common_name;
-            resultText.innerText = `Matched: ${bird}!`;
+        
+        if (data.results && data.results.length > 0) {
+            resultText.innerText = "Match: " + data.results[0].species_common_name;
         } else {
-            // FAIL ROUTE: Sound was recorded, but no bird was identified
-            resultText.innerText = "Identification failed. Sound might be too faint.";
+            resultText.innerText = "No bird found. Try again!";
         }
-
-    } catch (err) {
-        // ERROR ROUTE: Connection or server issues
-        resultText.innerText = "Connection lost. Try again?";
+    } catch (e) {
+        resultText.innerText = "Server error. Check internet.";
     } finally {
-        // RESET UI
-        isRecording = false;
         recordBtn.innerText = "LISTEN";
         recordBtn.style.background = "#1DB954";
     }
