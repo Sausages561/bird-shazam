@@ -1,114 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saco Bird Logger</title>
     <style>
-        body { 
-            background: #121212; 
-            color: white; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            text-align: center; 
-            padding: 20px; 
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 90vh;
-            margin: 0;
-        }
-        #btn { 
-            width: 200px; 
-            height: 200px; 
-            border-radius: 50%; 
-            border: none; 
-            background: #1DB954; 
-            color: white; 
-            font-size: 24px; 
-            font-weight: bold; 
-            cursor: pointer;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            transition: transform 0.1s, background 0.3s;
-            -webkit-tap-highlight-color: transparent;
-        }
-        #btn:active { transform: scale(0.95); }
-        #status { 
-            margin-top: 30px;
-            color: #b3b3b3; 
-            font-size: 16px; 
-            max-width: 80%;
-        }
-        h1 { margin-bottom: 10px; font-weight: 300; }
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 90vh; margin: 0; }
+        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        #status { margin-top: 30px; color: #b3b3b3; }
     </style>
 </head>
 <body>
     <h1>Saco Bird Logger</h1>
     <button id="btn">LISTEN</button>
-    <p id="status">Ready to record</p>
+    <p id="status">Ready</p>
 
     <script>
-        // REPLACE THIS with your most recent Google Apps Script Web App URL
         const SHEET_URL = 'YOUR_GOOGLE_SCRIPT_URL_HERE';
-        
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
 
         btn.onclick = async () => {
             try {
-                status.innerText = "Requesting Microphone...";
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const recorder = new MediaRecorder(stream);
                 const chunks = [];
-                
                 recorder.ondataavailable = e => chunks.push(e.data);
-                
                 recorder.onstop = async () => {
-                    status.innerText = "Processing Audio...";
+                    status.innerText = "Finalizing Packet...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
                     const reader = new FileReader();
-                    
                     reader.readAsDataURL(blob);
                     reader.onloadend = async () => {
-                        status.innerText = "Transmitting to Google...";
-                        // Get raw Base64 string without the prefix
-                        const base64Data = reader.result.split(',')[1];
+                        const base64 = reader.result.split(',')[1];
+                        
+                        // We use URLSearchParams because Safari won't strip this in 'no-cors' mode
+                        const params = new URLSearchParams();
+                        params.append('audio', base64);
 
                         try {
-                            // Sending as raw body content to bypass parameter parsing issues
                             await fetch(SHEET_URL, {
                                 method: 'POST',
                                 mode: 'no-cors',
-                                headers: { 'Content-Type': 'text/plain' },
-                                body: base64Data 
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: params.toString()
                             });
-                            status.innerText = "Check Google Sheet for Result!";
-                        } catch (err) {
-                            status.innerText = "Upload Failed: " + err.message;
-                        }
+                            status.innerText = "Sent! Check your Google Sheet.";
+                        } catch (err) { status.innerText = "Upload Error"; }
                     };
                 };
-
-                // Start recording
                 recorder.start();
                 btn.style.background = "#ff4444";
-                btn.innerText = "STOP";
-                status.innerText = "Recording 5s sample...";
-
-                // Automatic stop after 5 seconds
                 setTimeout(() => { 
-                    if (recorder.state === "recording") {
-                        recorder.stop(); 
-                        stream.getTracks().forEach(t => t.stop()); 
-                        btn.style.background = "#1DB954"; 
-                        btn.innerText = "LISTEN";
-                    }
+                    recorder.stop(); 
+                    stream.getTracks().forEach(t=>t.stop()); 
+                    btn.style.background = "#1DB954"; 
                 }, 5000);
-
-            } catch (e) { 
-                status.innerText = "Mic Error: Ensure you are on HTTPS and allowed mic access.";
-                console.error(e);
-            }
+            } catch (e) { status.innerText = "Mic Error"; }
         };
     </script>
 </body>
