@@ -24,9 +24,7 @@
         .entry { 
             background: var(--card); padding: 15px; border-radius: 12px; 
             margin-bottom: 12px; border-left: 5px solid var(--green);
-            animation: slideIn 0.3s ease-out;
         }
-        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
         .entry b { font-size: 18px; display: block; margin-bottom: 4px; }
         .entry small { color: #888; }
     </style>
@@ -36,16 +34,14 @@
     <div class="container">
         <h1>Bird Journal</h1>
         <button id="recordBtn">LISTEN</button>
-        <h2 id="status">Ready to Record</h2>
+        <h2 id="status">Ready</h2>
 
         <div class="history" id="history">
-            <h3>Recent Sightings (Google Sheets)</h3>
-            <!-- Entries will appear here live -->
+            <h3>Recent Sightings</h3>
         </div>
     </div>
 
     <script>
-        // YOUR LIVE WEB APP URL
         const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
 
         const recordBtn = document.getElementById('recordBtn');
@@ -58,7 +54,6 @@
 
         recordBtn.addEventListener('click', async () => {
             if (isRecording) return;
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
@@ -74,7 +69,7 @@
                 isRecording = true;
                 recordBtn.innerText = "RECORDING";
                 recordBtn.style.background = "#ff4444";
-                statusText.innerText = "Listening for 5 seconds...";
+                statusText.innerText = "Listening...";
 
                 setTimeout(() => {
                     if (mediaRecorder.state === "recording") {
@@ -82,7 +77,6 @@
                         stream.getTracks().forEach(t => t.stop());
                     }
                 }, 5000);
-
             } catch (err) {
                 statusText.innerText = "Mic Error: Check Permissions";
             }
@@ -90,47 +84,49 @@
 
         async function analyzeAndLog(blob) {
             recordBtn.innerText = "WAIT";
-            statusText.innerText = "Processing sound...";
+            statusText.innerText = "Processing...";
 
             const formData = new FormData();
             formData.append('audio', blob, 'recording.wav');
 
             try {
-                // 1. Get Identification from BirdNET
-                const birdResp = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://birdnet.cornell.edu/api/v1/analyze'), {
+                // SWITCHED PROXY: Using AllOrigins 'raw' which often handles 405 issues better
+                const target = 'https://birdnet.cornell.edu/api/v1/analyze';
+                const proxy = 'https://api.allorigins.win/raw?url=';
+                
+                const birdResp = await fetch(proxy + encodeURIComponent(target), {
                     method: 'POST',
                     body: formData
                 });
+
+                if (!birdResp.ok) throw new Error(`Server Status: ${birdResp.status}`);
+
                 const birdData = await birdResp.json();
 
                 if (birdData.results && birdData.results.length > 0) {
-                    const birdName = birdData.results[0].species_common_name;
-                    const confidence = Math.round(birdData.results[0].confidence * 100);
+                    const name = birdData.results[0].species_common_name;
+                    const conf = Math.round(birdData.results[0].confidence * 100);
                     
-                    statusText.innerText = `${birdName} Identified!`;
+                    statusText.innerText = `${name} Identified!`;
 
-                    // 2. Log to Google Sheet
-                    // We use mode: 'no-cors' for Apps Script to avoid browser blocks
+                    // Log to Google Sheet
                     fetch(SHEET_URL, {
                         method: 'POST',
                         mode: 'no-cors', 
                         headers: { 'Content-Type': 'text/plain' },
                         body: JSON.stringify({
-                            bird: birdName,
-                            confidence: confidence,
-                            audioUrl: "Local Recording"
+                            bird: name,
+                            confidence: conf,
+                            audioUrl: "Logged from App"
                         })
                     });
 
-                    // 3. Update Local UI
-                    updateUI(birdName, confidence);
-
+                    updateUI(name, conf);
                 } else {
-                    statusText.innerText = "No bird detected. Try again!";
+                    statusText.innerText = "No bird detected.";
                 }
             } catch (e) {
-                console.error(e);
-                statusText.innerText = "Connection error. Log failed.";
+                statusText.innerText = "Error: " + e.message;
             } finally {
                 recordBtn.innerText = "LISTEN";
                 recordBtn.style.background = "var(--green)";
@@ -142,7 +138,7 @@
             const entry = document.createElement('div');
             entry.className = 'entry';
             const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            entry.innerHTML = `<b>${name} (${conf}%)</b><small>Logged at ${time}</small>`;
+            entry.innerHTML = `<b>${name} (${conf}%)</b><small>${time}</small>`;
             historyDiv.insertBefore(entry, historyDiv.firstChild.nextSibling);
         }
     </script>
