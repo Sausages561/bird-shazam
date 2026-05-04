@@ -1,21 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saco Bird Logger</title>
-    <style>
-        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 90vh; margin: 0; }
-        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; }
-        #status { margin-top: 30px; color: #b3b3b3; font-size: 14px; }
-    </style>
+    <title>Saco Bird Lite</title>
 </head>
-<body>
-    <h1>Saco Bird Logger</h1>
-    <button id="btn">LISTEN</button>
+<body style="background:#121212; color:white; text-align:center; padding:50px; font-family:sans-serif;">
+    <h2>Saco Bird Lite</h2>
+    <button id="btn" style="width:150px; height:150px; border-radius:50%; background:#1DB954; color:white; border:none; font-size:20px;">LISTEN</button>
     <p id="status">Ready</p>
 
     <script>
-        const SHEET_URL = 'YOUR_GOOGLE_SCRIPT_URL_HERE';
+        const SHEET_URL = 'YOUR_GOOGLE_SCRIPT_URL';
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
 
@@ -25,39 +20,26 @@
                 const recorder = new MediaRecorder(stream);
                 const chunks = [];
                 recorder.ondataavailable = e => chunks.push(e.data);
-                
                 recorder.onstop = async () => {
-                    status.innerText = "Transmitting (3s sample)...";
+                    status.innerText = "Sending 1s clip...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
                     const reader = new FileReader();
                     reader.readAsDataURL(blob);
                     reader.onloadend = async () => {
-                        const params = new URLSearchParams();
-                        params.append('audio', reader.result.split(',')[1]);
-
-                        try {
-                            // no-cors is mandatory for Google Scripts from external domains
-                            await fetch(SHEET_URL, {
-                                method: 'POST',
-                                mode: 'no-cors',
-                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                body: params.toString()
-                            });
-                            status.innerText = "Sent! Refresh sheet in 5s.";
-                        } catch (err) { status.innerText = "Upload Failed"; }
+                        const base64 = reader.result.split(',')[1];
+                        await fetch(SHEET_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            body: JSON.stringify({ audio: base64 })
+                        });
+                        status.innerText = "Sent! Check Sheet.";
                     };
                 };
-
                 recorder.start();
                 btn.style.background = "#ff4444";
-                status.innerText = "Recording...";
-                // Shortened to 3 seconds for cellular reliability
-                setTimeout(() => { 
-                    recorder.stop(); 
-                    stream.getTracks().forEach(t=>t.stop()); 
-                    btn.style.background = "#1DB954"; 
-                }, 3000);
-            } catch (e) { status.innerText = "Mic Error"; }
+                // 1 SECOND RECORDING ONLY
+                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 1000);
+            } catch (e) { status.innerText = "Error: " + e.message; }
         };
     </script>
 </body>
