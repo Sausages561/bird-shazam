@@ -1,38 +1,112 @@
-async function analyze(blob) {
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bird Shazam</title>
+    <style>
+        body { 
+            background: #121212; color: white; text-align: center; 
+            font-family: -apple-system, sans-serif; height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0;
+        }
+        #recordBtn { 
+            width: 220px; height: 220px; border-radius: 50%; border: none; 
+            background: #1DB954; color: white; font-size: 26px; font-weight: bold;
+            cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: background 0.3s, transform 0.1s;
+        }
+        #recordBtn:active { transform: scale(0.95); }
+        h1 { margin-bottom: 10px; font-size: 32px; }
+        h2 { font-weight: 300; color: #b3b3b3; margin-top: 25px; padding: 0 20px; min-height: 50px; }
+    </style>
+</head>
+<body>
+    <h1>Bird ID</h1>
+    <button id="recordBtn">LISTEN</button>
+    <h2 id="result">Ready to identify</h2>
+
+    <script>
+        const recordBtn = document.getElementById('recordBtn');
+        const resultText = document.getElementById('result');
+        let isRecording = false;
+        let mediaRecorder;
+        let audioChunks = [];
+
+        recordBtn.addEventListener('click', async () => {
+            if (isRecording) return;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+                
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(audioChunks, { type: 'audio/wav' });
+                    await analyzeBird(blob);
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                recordBtn.innerText = "LISTENING...";
+                recordBtn.style.background = "#ff4444";
+                resultText.innerText = "Recording (5s)...";
+
+                setTimeout(() => {
+                    if (mediaRecorder.state === "recording") {
+                        mediaRecorder.stop();
+                        stream.getTracks().forEach(t => t.stop());
+                    }
+                }, 5000);
+
+            } catch (err) {
+                resultText.innerText = "Mic Error: " + err.message;
+            }
+        });
+
+        async function analyzeBird(blob) {
             recordBtn.innerText = "WAIT";
-            resultText.innerText = "Analyzing...";
+            resultText.innerText = "Uploading to BirdNET...";
             
             const formData = new FormData();
             formData.append('audio', blob);
 
             try {
-                // TRYING A MORE ROBUST PROXY
+                // Using AllOrigins Proxy to handle CORS issues
                 const targetUrl = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
                 
-                const response = await fetch(proxyUrl + encodeURIComponent(targetUrl), {
+                const response = await fetch(proxyUrl, {
                     method: 'POST',
                     body: formData
                 });
 
-                if (!response.ok) throw new Error("Server rejected the file.");
+                if (!response.ok) {
+                    throw new Error(`Server Status: ${response.status}`);
+                }
 
                 const data = await response.json();
                 
                 if (data.results && data.results.length > 0) {
                     const bird = data.results[0].species_common_name;
-                    const confidence = Math.round(data.results[0].confidence * 100);
-                    resultText.innerText = `${bird} (${confidence}%)`;
+                    const conf = Math.round(data.results[0].confidence * 100);
+                    resultText.innerText = `${bird} (${conf}%)`;
                 } else {
-                    resultText.innerText = "No bird found. Try again!";
+                    resultText.innerText = "No bird detected. Try again!";
                 }
+
             } catch (e) {
-                // Let's see the REAL error in the text box
-                resultText.innerText = "Error: " + e.message;
                 console.error(e);
+                // This gives us the specific error code
+                resultText.innerText = "Error: " + e.message;
             } finally {
                 recordBtn.innerText = "LISTEN";
                 recordBtn.style.background = "#1DB954";
                 isRecording = false;
             }
         }
+    </script>
+</body>
+</html>
