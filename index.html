@@ -14,7 +14,7 @@
             box-shadow: 0 10px 40px rgba(0,0,0,0.6); cursor: pointer; margin-top: 40px;
         }
         #recordBtn:active { transform: scale(0.92); }
-        #status { font-weight: 300; color: #b3b3b3; margin: 30px 0; min-height: 1.5em; }
+        #status { font-weight: 300; color: #b3b3b3; margin: 30px 0; min-height: 1.5em; font-size: 14px; }
         .entry { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 5px solid var(--green); text-align: left; }
     </style>
 </head>
@@ -54,34 +54,36 @@
                 recordBtn.style.background = "#ff4444";
                 statusText.innerText = "Listening...";
                 setTimeout(() => { if (mediaRecorder.state === "recording") { mediaRecorder.stop(); stream.getTracks().forEach(t => t.stop()); } }, 5000);
-            } catch (err) { statusText.innerText = "Mic Error"; }
+            } catch (err) { statusText.innerText = "Mic Error: Allow access in Safari settings."; }
         });
 
         async function analyzeAndLog(blob) {
             recordBtn.innerText = "WAIT";
-            statusText.innerText = "Processing...";
+            statusText.innerText = "Processing sound...";
             const formData = new FormData();
             formData.append('audio', blob, 'recording.wav');
 
             try {
+                // Using a slightly different proxy approach to avoid 405/403 errors
                 const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxy = 'https://api.allorigins.win/raw?url=';
+                const proxy = 'https://api.allorigins.win/get?url=';
                 
-                const response = await fetch(proxy + encodeURIComponent(target), { method: 'POST', body: formData });
-                const rawText = await response.text();
-
-                // AGGRESSIVE PARSING: Just look for the first JSON-like structure
-                const match = rawText.match(/\{[\s\S]*\}/);
-                if (!match) throw new Error("No data found");
+                const response = await fetch(proxy + encodeURIComponent(target), { 
+                    method: 'POST', 
+                    body: formData 
+                });
                 
-                const birdData = JSON.parse(match[0]);
+                const data = await response.json();
+                // AllOrigins 'get' method wraps the response in a 'contents' string
+                const rawContent = data.contents;
+                const birdData = JSON.parse(rawContent);
 
                 if (birdData.results && birdData.results.length > 0) {
                     const name = birdData.results[0].species_common_name;
                     const conf = Math.round(birdData.results[0].confidence * 100);
                     statusText.innerText = `${name} (${conf}%)`;
 
-                    // Log to Sheet (Invisible handshake)
+                    // Log to Google Sheet
                     fetch(SHEET_URL, {
                         method: 'POST',
                         mode: 'no-cors',
@@ -94,8 +96,8 @@
                     statusText.innerText = "No bird detected.";
                 }
             } catch (e) { 
-                console.error("Parse error:", e);
-                statusText.innerText = "Processing Error. Try again!"; 
+                console.error(e);
+                statusText.innerText = "Data Error: " + e.message; 
             } finally { 
                 recordBtn.innerText = "LISTEN"; 
                 recordBtn.style.background = "var(--green)"; 
