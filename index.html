@@ -1,105 +1,38 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bird Shazam</title>
-    <style>
-        body { 
-            background: #121212; color: white; text-align: center; 
-            font-family: -apple-system, sans-serif; height: 100vh;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0;
-        }
-        #recordBtn { 
-            width: 220px; height: 220px; border-radius: 50%; border: none; 
-            background: #1DB954; color: white; font-size: 26px; font-weight: bold;
-            cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        }
-        #recordBtn:active { transform: scale(0.95); }
-        h1 { margin-bottom: 10px; }
-        h2 { font-weight: 300; color: #b3b3b3; margin-top: 25px; padding: 0 20px; }
-    </style>
-</head>
-<body>
-    <h1>Bird ID</h1>
-    <button id="recordBtn">LISTEN</button>
-    <h2 id="result">Ready to identify</h2>
-
-    <script>
-        const recordBtn = document.getElementById('recordBtn');
-        const resultText = document.getElementById('result');
-        let isRecording = false;
-        let mediaRecorder;
-        let audioChunks = [];
-
-        recordBtn.addEventListener('click', async () => {
-            if (isRecording) return;
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-
-                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(audioChunks, { type: 'audio/wav' });
-                    analyze(blob);
-                };
-
-                mediaRecorder.start();
-                isRecording = true;
-                recordBtn.innerText = "LISTENING...";
-                recordBtn.style.background = "#ff4444";
-                resultText.innerText = "Recording for 5 seconds...";
-
-                setTimeout(() => {
-                    if (mediaRecorder.state === "recording") {
-                        mediaRecorder.stop();
-                        stream.getTracks().forEach(t => t.stop());
-                        isRecording = false;
-                    }
-                }, 5000);
-            } catch (err) {
-                alert("Mic error: " + err.message);
-                resultText.innerText = "Mic access denied.";
-            }
-        });
-
-        async function analyze(blob) {
+async function analyze(blob) {
             recordBtn.innerText = "WAIT";
-            resultText.innerText = "Analyzing sound waves...";
+            resultText.innerText = "Analyzing...";
             
             const formData = new FormData();
             formData.append('audio', blob);
 
             try {
-                // Using a CORS proxy to bypass the browser security block
-                const proxyUrl = 'https://corsproxy.io/?';
+                // TRYING A MORE ROBUST PROXY
                 const targetUrl = 'https://birdnet.cornell.edu/api/v1/analyze';
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
                 
                 const response = await fetch(proxyUrl + encodeURIComponent(targetUrl), {
                     method: 'POST',
                     body: formData
                 });
 
-                if (!response.ok) throw new Error("Server response error");
+                if (!response.ok) throw new Error("Server rejected the file.");
 
                 const data = await response.json();
+                
                 if (data.results && data.results.length > 0) {
                     const bird = data.results[0].species_common_name;
                     const confidence = Math.round(data.results[0].confidence * 100);
                     resultText.innerText = `${bird} (${confidence}%)`;
                 } else {
-                    resultText.innerText = "No bird detected. Try again!";
+                    resultText.innerText = "No bird found. Try again!";
                 }
             } catch (e) {
+                // Let's see the REAL error in the text box
+                resultText.innerText = "Error: " + e.message;
                 console.error(e);
-                resultText.innerText = "Connection error. Ensure you have internet.";
             } finally {
                 recordBtn.innerText = "LISTEN";
                 recordBtn.style.background = "#1DB954";
                 isRecording = false;
             }
         }
-    </script>
-</body>
-</html>
