@@ -17,7 +17,7 @@
         }
         #recordBtn:active { transform: scale(0.95); }
         h1 { margin-bottom: 10px; }
-        h2 { font-weight: 300; color: #b3b3b3; margin-top: 25px; }
+        h2 { font-weight: 300; color: #b3b3b3; margin-top: 25px; padding: 0 20px; }
     </style>
 </head>
 <body>
@@ -26,7 +26,6 @@
     <h2 id="result">Ready to identify</h2>
 
     <script>
-        // ALL LOGIC IS NOW INSIDE THIS FILE
         const recordBtn = document.getElementById('recordBtn');
         const resultText = document.getElementById('result');
         let isRecording = false;
@@ -36,7 +35,6 @@
         recordBtn.addEventListener('click', async () => {
             if (isRecording) return;
             try {
-                // This triggers the "Allow Microphone" pop-up
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
@@ -61,31 +59,41 @@
                     }
                 }, 5000);
             } catch (err) {
-                alert("Error: " + err.message);
+                alert("Mic error: " + err.message);
                 resultText.innerText = "Mic access denied.";
             }
         });
 
         async function analyze(blob) {
             recordBtn.innerText = "WAIT";
-            resultText.innerText = "Analyzing sound...";
+            resultText.innerText = "Analyzing sound waves...";
+            
             const formData = new FormData();
             formData.append('audio', blob);
 
             try {
-                const response = await fetch('https://birdnet.cornell.edu/api/v1/analyze', {
+                // Using a CORS proxy to bypass the browser security block
+                const proxyUrl = 'https://corsproxy.io/?';
+                const targetUrl = 'https://birdnet.cornell.edu/api/v1/analyze';
+                
+                const response = await fetch(proxyUrl + encodeURIComponent(targetUrl), {
                     method: 'POST',
                     body: formData
                 });
+
+                if (!response.ok) throw new Error("Server response error");
+
                 const data = await response.json();
-                if (data.results && data.results.length > 0 && data.results[0].confidence > 0.4) {
+                if (data.results && data.results.length > 0) {
                     const bird = data.results[0].species_common_name;
-                    resultText.innerText = `Matched: ${bird}`;
+                    const confidence = Math.round(data.results[0].confidence * 100);
+                    resultText.innerText = `${bird} (${confidence}%)`;
                 } else {
-                    resultText.innerText = "No bird found. Try again!";
+                    resultText.innerText = "No bird detected. Try again!";
                 }
             } catch (e) {
-                resultText.innerText = "Connection error.";
+                console.error(e);
+                resultText.innerText = "Connection error. Ensure you have internet.";
             } finally {
                 recordBtn.innerText = "LISTEN";
                 recordBtn.style.background = "#1DB954";
