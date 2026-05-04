@@ -6,7 +6,10 @@
     <title>Saco Bird Logger</title>
     <style>
         :root { --green: #1DB954; --bg: #121212; --card: #1e1e1e; }
-        body { background: var(--bg); color: white; font-family: -apple-system, sans-serif; text-align: center; padding: 20px; margin: 0; }
+        body { 
+            background: var(--bg); color: white; font-family: -apple-system, sans-serif; 
+            text-align: center; padding: 20px; margin: 0;
+        }
         .container { max-width: 450px; margin: auto; }
         #recordBtn { 
             width: 200px; height: 200px; border-radius: 50%; border: none; 
@@ -16,7 +19,14 @@
         }
         #recordBtn:active { transform: scale(0.92); }
         #status { font-weight: 300; color: #b3b3b3; margin: 30px 0; min-height: 1.5em; }
-        .entry { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 5px solid var(--green); text-align: left; }
+        
+        .history { text-align: left; margin-top: 40px; }
+        .entry { 
+            background: var(--card); padding: 15px; border-radius: 12px; 
+            margin-bottom: 12px; border-left: 5px solid var(--green);
+        }
+        .entry b { font-size: 18px; display: block; margin-bottom: 4px; }
+        .entry small { color: #888; }
     </style>
 </head>
 <body>
@@ -25,10 +35,14 @@
         <h1>Bird Journal</h1>
         <button id="recordBtn">LISTEN</button>
         <h2 id="status">Ready</h2>
-        <div id="history"><h3>Recent Sightings</h3></div>
+
+        <div class="history" id="history">
+            <h3>Recent Sightings</h3>
+        </div>
     </div>
 
     <script>
+        // UPDATED WITH YOUR LIVE WEB APP URL
         const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
 
         const recordBtn = document.getElementById('recordBtn');
@@ -45,59 +59,82 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
+
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 mediaRecorder.onstop = () => {
                     const blob = new Blob(audioChunks, { type: 'audio/wav' });
                     analyzeAndLog(blob);
                 };
+
                 mediaRecorder.start();
                 isRecording = true;
                 recordBtn.innerText = "RECORDING";
                 recordBtn.style.background = "#ff4444";
-                statusText.innerText = "Listening...";
-                setTimeout(() => { if (mediaRecorder.state === "recording") { mediaRecorder.stop(); stream.getTracks().forEach(t => t.stop()); } }, 5000);
-            } catch (err) { statusText.innerText = "Mic Error"; }
+                statusText.innerText = "Listening for birds...";
+
+                setTimeout(() => {
+                    if (mediaRecorder.state === "recording") {
+                        mediaRecorder.stop();
+                        stream.getTracks().forEach(t => t.stop());
+                    }
+                }, 5000);
+            } catch (err) {
+                statusText.innerText = "Mic Error: Check Permissions";
+            }
         });
 
         async function analyzeAndLog(blob) {
             recordBtn.innerText = "WAIT";
-            statusText.innerText = "Processing...";
+            statusText.innerText = "Processing sound...";
+
             const formData = new FormData();
             formData.append('audio', blob, 'recording.wav');
 
             try {
+                // 1. Identify via BirdNET
                 const target = 'https://birdnet.cornell.edu/api/v1/analyze';
                 const proxy = 'https://api.allorigins.win/raw?url=';
-                const birdResp = await fetch(proxy + encodeURIComponent(target), { method: 'POST', body: formData });
+                
+                const birdResp = await fetch(proxy + encodeURIComponent(target), {
+                    method: 'POST',
+                    body: formData
+                });
+
                 const birdData = await birdResp.json();
 
                 if (birdData.results && birdData.results.length > 0) {
                     const name = birdData.results[0].species_common_name;
                     const conf = Math.round(birdData.results[0].confidence * 100);
+                    
                     statusText.innerText = `${name} Identified!`;
 
-                    // --- THE UPDATED GOOGLE LOGGING LOGIC ---
-                    // Using a simple POST that Google Apps Script finds easier to digest
+                    // 2. Log to Google Sheet via your new Apps Script URL
+                    // We use application/x-www-form-urlencoded as it's the most stable for Apps Script
                     fetch(SHEET_URL, {
                         method: 'POST',
-                        mode: 'no-cors',
-                        cache: 'no-cache',
+                        mode: 'no-cors', 
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Logged`
+                        body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=App-Log`
                     });
 
                     updateUI(name, conf);
                 } else {
-                    statusText.innerText = "No bird detected.";
+                    statusText.innerText = "No bird detected. Try again!";
                 }
-            } catch (e) { statusText.innerText = "Error: " + e.message; }
-            finally { recordBtn.innerText = "LISTEN"; recordBtn.style.background = "var(--green)"; isRecording = false; }
+            } catch (e) {
+                statusText.innerText = "Error identifying bird.";
+            } finally {
+                recordBtn.innerText = "LISTEN";
+                recordBtn.style.background = "var(--green)";
+                isRecording = false;
+            }
         }
 
         function updateUI(name, conf) {
             const entry = document.createElement('div');
             entry.className = 'entry';
-            entry.innerHTML = `<b>${name} (${conf}%)</b><br><small>${new Date().toLocaleTimeString()}</small>`;
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            entry.innerHTML = `<b>${name} (${conf}%)</b><small>Logged at ${time}</small>`;
             historyDiv.insertBefore(entry, historyDiv.firstChild.nextSibling);
         }
     </script>
