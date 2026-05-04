@@ -1,32 +1,76 @@
-// This function will now actually talk to the BirdNET engine
-async function stopRecording(blob) {
-    isRecording = false;
-    recordBtn.innerText = "LISTEN";
-    recordBtn.style.background = "#1DB954";
-    resultText.innerText = "Identifying...";
+let mediaRecorder;
+let audioChunks = [];
 
-    // We create a "Package" to send the audio to the BirdNET API
+recordBtn.addEventListener('click', async () => {
+    if (!isRecording) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                analyzeBird(audioBlob); // The "Analysis" Route
+            };
+
+            // Start recording
+            mediaRecorder.start();
+            isRecording = true;
+            recordBtn.innerText = "LISTENING...";
+            recordBtn.style.background = "#ff4444";
+            resultText.innerText = "Recording (5s)...";
+
+            // AUTOMATIC 5-SECOND WINDOW
+            setTimeout(() => {
+                if (isRecording) {
+                    mediaRecorder.stop();
+                    // Stop all mic tracks to turn off the green dot on iPhone
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            }, 5000);
+
+        } catch (err) {
+            resultText.innerText = "Mic access denied.";
+        }
+    }
+});
+
+async function analyzeBird(blob) {
+    recordBtn.innerText = "WAIT";
+    resultText.innerText = "Analyzing sound...";
+
     const formData = new FormData();
     formData.append('audio', blob);
 
     try {
-        // We send the audio to the public BirdNET analysis server
         const response = await fetch('https://birdnet.cornell.edu/api/v1/analyze', {
             method: 'POST',
             body: formData
         });
 
         const data = await response.json();
-        
-        // If the AI finds a bird, we display the top result
-        if (data.results && data.results.length > 0) {
-            const topBird = data.results[0].species_common_name;
-            const confidence = Math.round(data.results[0].confidence * 100);
-            resultText.innerText = `It's a ${topBird}! (${confidence}% sure)`;
+
+        // THE "ROUTE" LOGIC
+        if (data.results && data.results.length > 0 && data.results[0].confidence > 0.5) {
+            // SUCCESS ROUTE
+            const bird = data.results[0].species_common_name;
+            resultText.innerText = `Matched: ${bird}!`;
         } else {
-            resultText.innerText = "No bird detected. Try getting closer!";
+            // FAIL ROUTE: Sound was recorded, but no bird was identified
+            resultText.innerText = "Identification failed. Sound might be too faint.";
         }
+
     } catch (err) {
-        resultText.innerText = "Analysis Error. Check your connection.";
+        // ERROR ROUTE: Connection or server issues
+        resultText.innerText = "Connection lost. Try again?";
+    } finally {
+        // RESET UI
+        isRecording = false;
+        recordBtn.innerText = "LISTEN";
+        recordBtn.style.background = "#1DB954";
     }
 }
