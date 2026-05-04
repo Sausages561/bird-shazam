@@ -5,20 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saco Bird Logger</title>
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
-        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; }
+        body { background: #121212; color: white; font-family: -apple-system, sans-serif; text-align: center; padding: 20px; }
+        #btn { 
+            width: 180px; height: 180px; border-radius: 50%; border: none; 
+            background: #1DB954; color: white; font-size: 22px; font-weight: bold; 
+            margin-top: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
         #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
+        .log-entry { background: #1e1e1e; padding: 10px; margin: 10px auto; border-radius: 8px; max-width: 300px; text-align: left; border-left: 4px solid #1DB954; }
     </style>
 </head>
 <body>
     <h1>Bird Logger</h1>
     <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
+    <div id="results"></div>
 
     <script>
         const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
+        const results = document.getElementById('results');
 
         btn.onclick = async () => {
             try {
@@ -28,17 +35,25 @@
                 
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Processing...";
+                    status.innerText = "Analyzing Audio...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
                     const fd = new FormData();
                     fd.append('audio', blob, 'rec.wav');
 
                     try {
-                        // Use a different proxy gateway
-                        const res = await fetch('https://corsproxy.io/?' + encodeURIComponent('https://birdnet.cornell.edu/api/v1/analyze'), {
+                        // Using a more robust CORS bridge
+                        const target = 'https://birdnet.cornell.edu/api/v1/analyze';
+                        const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(target);
+                        
+                        // We change to a GET request format that proxies often handle better for mobile
+                        const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(target), {
                             method: 'POST',
+                            mode: 'cors',
                             body: fd
                         });
+
+                        if (!res.ok) throw new Error("Server Busy");
+                        
                         const data = await res.json();
                         
                         if (data.results && data.results[0]) {
@@ -47,20 +62,31 @@
                             status.innerText = bird + " (" + conf + "%)";
                             
                             // Log to Google Sheet
-                            fetch(`${SHEET_URL}?bird=${encodeURIComponent(bird)}&confidence=${conf}&audioUrl=Live`, { mode: 'no-cors' });
+                            fetch(`${SHEET_URL}?bird=${encodeURIComponent(bird)}&confidence=${conf}&audioUrl=Saco-Success`, { mode: 'no-cors' });
+                            
+                            const div = document.createElement('div');
+                            div.className = 'log-entry';
+                            div.innerHTML = `<b>${bird}</b> - ${conf}%<br><small>${new Date().toLocaleTimeString()}</small>`;
+                            results.prepend(div);
                         } else {
-                            status.innerText = "No birds detected.";
+                            status.innerText = "No birds identified.";
                         }
                     } catch (e) {
-                        status.innerText = "Network interference. Try toggling wifi.";
+                        status.innerText = "Error: " + e.message;
+                        // Let's at least log the failure to your sheet so we can track it
+                        fetch(`${SHEET_URL}?bird=Error&confidence=0&audioUrl=${encodeURIComponent(e.message)}`, { mode: 'no-cors' });
                     }
                 };
 
                 recorder.start();
                 btn.style.background = "#ff4444";
                 status.innerText = "Recording...";
-                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 5000);
-            } catch (e) { status.innerText = "Mic Error: Allow access in settings."; }
+                setTimeout(() => { 
+                    recorder.stop(); 
+                    stream.getTracks().forEach(t => t.stop()); 
+                    btn.style.background = "#1DB954"; 
+                }, 5000);
+            } catch (e) { status.innerText = "Mic Error: Check Safari Settings"; }
         };
     </script>
 </body>
