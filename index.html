@@ -12,20 +12,17 @@
             margin-top: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
-        .log-entry { background: #1e1e1e; padding: 10px; margin: 10px auto; border-radius: 8px; max-width: 300px; text-align: left; border-left: 4px solid #1DB954; }
     </style>
 </head>
 <body>
     <h1>Bird Logger</h1>
     <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
-    <div id="results"></div>
 
     <script>
         const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
-        const results = document.getElementById('results');
 
         btn.onclick = async () => {
             try {
@@ -35,47 +32,16 @@
                 
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Analyzing Audio...";
+                    status.innerText = "Encoding Signal...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
-                    const fd = new FormData();
-                    fd.append('audio', blob, 'rec.wav');
-
-                    try {
-                        // Using a more robust CORS bridge
-                        const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                        const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(target);
-                        
-                        // We change to a GET request format that proxies often handle better for mobile
-                        const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(target), {
-                            method: 'POST',
-                            mode: 'cors',
-                            body: fd
-                        });
-
-                        if (!res.ok) throw new Error("Server Busy");
-                        
-                        const data = await res.json();
-                        
-                        if (data.results && data.results[0]) {
-                            const bird = data.results[0].species_common_name;
-                            const conf = Math.round(data.results[0].confidence * 100);
-                            status.innerText = bird + " (" + conf + "%)";
-                            
-                            // Log to Google Sheet
-                            fetch(`${SHEET_URL}?bird=${encodeURIComponent(bird)}&confidence=${conf}&audioUrl=Saco-Success`, { mode: 'no-cors' });
-                            
-                            const div = document.createElement('div');
-                            div.className = 'log-entry';
-                            div.innerHTML = `<b>${bird}</b> - ${conf}%<br><small>${new Date().toLocaleTimeString()}</small>`;
-                            results.prepend(div);
-                        } else {
-                            status.innerText = "No birds identified.";
-                        }
-                    } catch (e) {
-                        status.innerText = "Error: " + e.message;
-                        // Let's at least log the failure to your sheet so we can track it
-                        fetch(`${SHEET_URL}?bird=Error&confidence=0&audioUrl=${encodeURIComponent(e.message)}`, { mode: 'no-cors' });
-                    }
+                    
+                    // Convert Blob to Base64 to bypass "Interference" blocks
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = async () => {
+                        const base64Data = reader.result.split(',')[1];
+                        sendToProxy(base64Data);
+                    };
                 };
 
                 recorder.start();
@@ -86,8 +52,41 @@
                     stream.getTracks().forEach(t => t.stop()); 
                     btn.style.background = "#1DB954"; 
                 }, 5000);
-            } catch (e) { status.innerText = "Mic Error: Check Safari Settings"; }
+            } catch (e) { status.innerText = "Mic Error: Check Settings"; }
         };
+
+        async function sendToProxy(base64) {
+            status.innerText = "Transmitting...";
+            const target = 'https://birdnet.cornell.edu/api/v1/analyze';
+            
+            try {
+                // We wrap the base64 in a standard form that proxies recognize easily
+                const fd = new FormData();
+                fd.append('audio', base64);
+
+                const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(target), {
+                    method: 'POST',
+                    body: fd
+                });
+
+                const data = await res.json();
+                
+                if (data.results && data.results[0]) {
+                    const bird = data.results[0].species_common_name;
+                    const conf = Math.round(data.results[0].confidence * 100);
+                    status.innerText = bird + " (" + conf + "%)";
+                    
+                    // Log to Sheet (The part we know works!)
+                    fetch(`${SHEET_URL}?bird=${encodeURIComponent(bird)}&confidence=${conf}&audioUrl=Cellular-Success`, { mode: 'no-cors' });
+                } else {
+                    status.innerText = "No birds detected.";
+                }
+            } catch (e) {
+                status.innerText = "Signal Error. Check Sheet.";
+                // Log the exact error to your sheet for debugging
+                fetch(`${SHEET_URL}?bird=Error&confidence=0&audioUrl=${encodeURIComponent(e.message)}`, { mode: 'no-cors' });
+            }
+        }
     </script>
 </body>
 </html>
