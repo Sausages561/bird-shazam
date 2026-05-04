@@ -6,24 +6,33 @@
     <title>Saco Bird Logger</title>
     <style>
         :root { --green: #1DB954; --bg: #121212; --card: #1e1e1e; }
-        body { background: var(--bg); color: white; font-family: -apple-system, sans-serif; text-align: center; padding: 20px; margin: 0; }
+        body { 
+            background: var(--bg); color: white; font-family: -apple-system, sans-serif; 
+            text-align: center; padding: 20px; margin: 0;
+        }
         .container { max-width: 450px; margin: auto; }
         #recordBtn { 
             width: 200px; height: 200px; border-radius: 50%; border: none; 
             background: var(--green); color: white; font-size: 24px; font-weight: bold;
             box-shadow: 0 10px 40px rgba(0,0,0,0.6); cursor: pointer; margin-top: 40px;
+            transition: all 0.2s ease; -webkit-tap-highlight-color: transparent;
         }
         #recordBtn:active { transform: scale(0.92); }
         #status { font-weight: 300; color: #b3b3b3; margin: 30px 0; min-height: 1.5em; font-size: 14px; }
-        .entry { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 5px solid var(--green); text-align: left; }
+        .history { text-align: left; margin-top: 40px; }
+        .entry { 
+            background: var(--card); padding: 15px; border-radius: 12px; 
+            margin-bottom: 12px; border-left: 5px solid var(--green);
+        }
     </style>
 </head>
 <body>
+
     <div class="container">
         <h1>Bird Journal</h1>
         <button id="recordBtn">LISTEN</button>
         <h2 id="status">Ready</h2>
-        <div id="history"><h3>Recent Sightings</h3></div>
+        <div class="history" id="history"><h3>Recent Sightings</h3></div>
     </div>
 
     <script>
@@ -43,78 +52,87 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
+
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 mediaRecorder.onstop = () => {
                     const blob = new Blob(audioChunks, { type: 'audio/wav' });
                     analyzeAndLog(blob);
                 };
+
                 mediaRecorder.start();
                 isRecording = true;
                 recordBtn.innerText = "RECORDING";
                 recordBtn.style.background = "#ff4444";
                 statusText.innerText = "Listening...";
-                setTimeout(() => { if (mediaRecorder.state === "recording") { mediaRecorder.stop(); stream.getTracks().forEach(t => t.stop()); } }, 5000);
-            } catch (err) { statusText.innerText = "Mic Error: Check Safari Permissions"; }
+
+                setTimeout(() => {
+                    if (mediaRecorder.state === "recording") {
+                        mediaRecorder.stop();
+                        stream.getTracks().forEach(t => t.stop());
+                    }
+                }, 5000);
+            } catch (err) {
+                statusText.innerText = "Mic Error: Check Safari Settings";
+            }
         });
 
         async function analyzeAndLog(blob) {
             recordBtn.innerText = "WAIT";
-            statusText.innerText = "Transmitting...";
-            
+            statusText.innerText = "Syncing...";
+
+            // --- STEP 1: TEST GOOGLE LOGGING IMMEDIATELY ---
+            try {
+                fetch(SHEET_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `bird=Attempting-ID&confidence=0&audioUrl=Saco-Home`
+                });
+            } catch(e) { console.warn("Initial sync failed"); }
+
+            // --- STEP 2: BIRD IDENTIFICATION ---
             const formData = new FormData();
             formData.append('audio', blob, 'recording.wav');
 
-            // List of proxies to try in order
-            const proxies = [
-                'https://api.allorigins.win/raw?url=',
-                'https://corsproxy.io/?url='
-            ];
-
             const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-            let success = false;
+            const proxy = 'https://api.allorigins.win/raw?url=';
 
-            for (let proxy of proxies) {
-                if (success) break;
-                try {
-                    const response = await fetch(proxy + encodeURIComponent(target), { 
-                        method: 'POST', 
-                        body: formData 
-                    });
-                    
-                    const rawResponse = await response.text();
-                    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-                    
-                    if (jsonMatch) {
-                        const birdData = JSON.parse(jsonMatch[0]);
-                        if (birdData.results && birdData.results.length > 0) {
-                            const name = birdData.results[0].species_common_name;
-                            const conf = Math.round(birdData.results[0].confidence * 100);
-                            statusText.innerText = `${name} (${conf}%)`;
+            try {
+                const response = await fetch(proxy + encodeURIComponent(target), { 
+                    method: 'POST', 
+                    body: formData 
+                });
+                
+                const rawText = await response.text();
+                const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+                
+                if (jsonMatch) {
+                    const birdData = JSON.parse(jsonMatch[0]);
+                    if (birdData.results && birdData.results.length > 0) {
+                        const name = birdData.results[0].species_common_name;
+                        const conf = Math.round(birdData.results[0].confidence * 100);
+                        statusText.innerText = `${name} (${conf}%)`;
 
-                            // Log to Sheet
-                            fetch(SHEET_URL, {
-                                method: 'POST',
-                                mode: 'no-cors',
-                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Logged`
-                            });
+                        // Update the sheet with the actual name
+                        fetch(SHEET_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Success`
+                        });
 
-                            updateUI(name, conf);
-                            success = true;
-                        }
+                        updateUI(name, conf);
+                    } else {
+                        statusText.innerText = "No bird detected.";
                     }
-                } catch (e) {
-                    console.warn("Proxy failed, trying next...");
                 }
+            } catch (e) {
+                statusText.innerText = "Busy Server. Check Sheet.";
+            } finally {
+                recordBtn.innerText = "LISTEN";
+                recordBtn.style.background = "var(--green)";
+                isRecording = false;
             }
-
-            if (!success) {
-                statusText.innerText = "Network interference. Try toggling Wi-Fi.";
-            }
-
-            recordBtn.innerText = "LISTEN"; 
-            recordBtn.style.background = "var(--green)"; 
-            isRecording = false; 
         }
 
         function updateUI(name, conf) {
