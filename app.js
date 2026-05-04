@@ -1,33 +1,32 @@
-const recordBtn = document.getElementById('recordBtn');
-const resultText = document.getElementById('result');
-
-let isRecording = false;
-
-recordBtn.addEventListener('click', async () => {
-    if (!isRecording) {
-        try {
-            // This line pops up the "Allow Microphone" box on your iPhone
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            isRecording = true;
-            recordBtn.innerText = "LISTENING...";
-            recordBtn.style.background = "#ff4444"; // Change button to red
-            resultText.innerText = "Listening for birds...";
-
-            // For now, we will just simulate a "listen" for 3 seconds
-            setTimeout(() => {
-                stopRecording();
-            }, 3000);
-
-        } catch (err) {
-            resultText.innerText = "Mic Error: " + err;
-        }
-    }
-});
-
-function stopRecording() {
+// This function will now actually talk to the BirdNET engine
+async function stopRecording(blob) {
     isRecording = false;
     recordBtn.innerText = "LISTEN";
-    recordBtn.style.background = "#1DB954"; // Change back to green
-    resultText.innerText = "Analysis coming soon...";
+    recordBtn.style.background = "#1DB954";
+    resultText.innerText = "Identifying...";
+
+    // We create a "Package" to send the audio to the BirdNET API
+    const formData = new FormData();
+    formData.append('audio', blob);
+
+    try {
+        // We send the audio to the public BirdNET analysis server
+        const response = await fetch('https://birdnet.cornell.edu/api/v1/analyze', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        
+        // If the AI finds a bird, we display the top result
+        if (data.results && data.results.length > 0) {
+            const topBird = data.results[0].species_common_name;
+            const confidence = Math.round(data.results[0].confidence * 100);
+            resultText.innerText = `It's a ${topBird}! (${confidence}% sure)`;
+        } else {
+            resultText.innerText = "No bird detected. Try getting closer!";
+        }
+    } catch (err) {
+        resultText.innerText = "Analysis Error. Check your connection.";
+    }
 }
