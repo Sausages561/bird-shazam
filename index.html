@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saco Bird Test</title>
+    <title>Saco Bird Logger</title>
     <style>
         body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
         #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; }
@@ -10,7 +10,7 @@
     </style>
 </head>
 <body>
-    <h1>Direct API Test</h1>
+    <h1>Bird Logger (Proxy Mode)</h1>
     <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
 
@@ -25,21 +25,25 @@
                 const chunks = [];
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Analyzing Directly...";
+                    status.innerText = "Bypassing Firewall...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
-                    
                     const formData = new FormData();
                     formData.append('audio', blob);
 
+                    // Using a proxy to hide the Cornell destination from the firewall
+                    const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                    const targetUrl = 'https://birdnet.cornell.edu/api/v1/analyze';
+
                     try {
-                        const response = await fetch('https://birdnet.cornell.edu/api/v1/analyze', {
+                        const response = await fetch(proxyUrl + targetUrl, {
                             method: 'POST',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
                             body: formData
                         });
                         const result = await response.json();
                         status.innerText = "Result: " + (result.results[0]?.species_common_name || "No Bird Found");
                     } catch (err) {
-                        status.innerText = "Direct Blocked: " + err.message;
+                        status.innerText = "Proxy Blocked. Try toggling Wi-Fi.";
                     }
                 };
                 recorder.start();
