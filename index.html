@@ -41,62 +41,66 @@
             if (isRecording) return;
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                // Safari-specific: We force the mimeType to audio/mp4 if wav fails
-                const options = { mimeType: 'audio/mp4' };
                 mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 mediaRecorder.onstop = () => {
-                    const blob = new Blob(audioChunks, { type: 'audio/mp4' });
+                    const blob = new Blob(audioChunks, { type: 'audio/wav' });
                     analyzeAndLog(blob);
                 };
                 mediaRecorder.start();
                 isRecording = true;
                 recordBtn.innerText = "RECORDING";
                 recordBtn.style.background = "#ff4444";
-                statusText.innerText = "Listening for birds...";
+                statusText.innerText = "Listening...";
                 setTimeout(() => { if (mediaRecorder.state === "recording") { mediaRecorder.stop(); stream.getTracks().forEach(t => t.stop()); } }, 5000);
-            } catch (err) { statusText.innerText = "Mic Error: Check Safari Settings"; }
+            } catch (err) { statusText.innerText = "Mic Error: Check Safari Permissions"; }
         });
 
         async function analyzeAndLog(blob) {
             recordBtn.innerText = "WAIT";
-            statusText.innerText = "Connecting to Saco-Cloud...";
+            statusText.innerText = "Decoding signal...";
+            
             const formData = new FormData();
-            formData.append('audio', blob, 'recording.m4a');
+            formData.append('audio', blob, 'recording.wav');
 
             try {
-                // Trying a more transparent CORS bridge specifically for mobile
+                // Using a dedicated proxy mirror to avoid the HTML wrapper issue
                 const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxy = 'https://corsproxy.io/?url=';
+                const proxy = 'https://api.allorigins.win/raw?url=';
                 
                 const response = await fetch(proxy + encodeURIComponent(target), { 
                     method: 'POST', 
                     body: formData 
                 });
                 
-                const birdData = await response.json();
+                const rawResponse = await response.text();
+                
+                // Safety check: Find the JSON content inside the string
+                const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) throw new Error("Server returned HTML instead of Data. Wait 60s and retry.");
+                
+                const birdData = JSON.parse(jsonMatch[0]);
 
                 if (birdData.results && birdData.results.length > 0) {
                     const name = birdData.results[0].species_common_name;
                     const conf = Math.round(birdData.results[0].confidence * 100);
                     statusText.innerText = `${name} (${conf}%)`;
 
-                    // Log to Google Sheet (Invisible row update)
                     fetch(SHEET_URL, {
                         method: 'POST',
                         mode: 'no-cors',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Mobile-Logged`
+                        body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Logged`
                     });
 
                     updateUI(name, conf);
                 } else {
-                    statusText.innerText = "No bird detected. Try getting closer!";
+                    statusText.innerText = "No bird detected.";
                 }
             } catch (e) { 
                 console.error(e);
-                statusText.innerText = "Network Signal Error. Retrying..."; 
+                statusText.innerText = e.message.includes("JSON") ? "Busy Server. Try again." : e.message; 
             } finally { 
                 recordBtn.innerText = "LISTEN"; 
                 recordBtn.style.background = "var(--green)"; 
