@@ -15,7 +15,6 @@
 
     <script>
         const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
-        const BIRDNET_URL = 'https://birdnet.cornell.edu/api/v1/analyze';
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
 
@@ -26,32 +25,24 @@
                 const chunks = [];
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Analyzing...";
+                    status.innerText = "Transmitting to Proxy...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
-                    
-                    // 1. Talk to Cornell Directly
-                    const formData = new FormData();
-                    formData.append('audio', blob);
-
-                    const response = await fetch(BIRDNET_URL, { method: 'POST', body: formData });
-                    const result = await response.json();
-                    
-                    const bird = result.results?.[0]?.species_common_name || "No bird detected";
-                    const conf = result.results?.[0]?.confidence || 0;
-
-                    // 2. Send the result to your Google Sheet
-                    await fetch(GOOGLE_URL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        body: JSON.stringify({ bird: bird, conf: Math.round(conf * 100) })
-                    });
-
-                    status.innerText = bird + " (" + Math.round(conf * 100) + "%) logged!";
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = async () => {
+                        const base64Data = reader.result.split(',')[1];
+                        await fetch(GOOGLE_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            body: base64Data
+                        });
+                        status.innerText = "Sent! Check sheet in 10s.";
+                    };
                 };
                 recorder.start();
                 btn.style.background = "#ff4444";
                 setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 3000);
-            } catch (e) { status.innerText = "Error: " + e.message; }
+            } catch (e) { status.innerText = "Mic Error: " + e.message; }
         };
     </script>
 </body>
