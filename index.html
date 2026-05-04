@@ -3,38 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bird ID</title>
+    <title>Saco Bird Logger</title>
     <style>
+        :root { --green: #1DB954; --bg: #121212; --card: #1e1e1e; }
         body { 
-            background: #121212; color: white; text-align: center; 
-            font-family: -apple-system, sans-serif; height: 100vh;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0;
+            background: var(--bg); color: white; font-family: -apple-system, sans-serif; 
+            text-align: center; padding: 20px; margin: 0;
         }
+        .container { max-width: 450px; margin: auto; }
         #recordBtn { 
-            width: 220px; height: 220px; border-radius: 50%; border: none; 
-            background: #1DB954; color: white; font-size: 26px; font-weight: bold;
-            cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            transition: transform 0.1s;
+            width: 200px; height: 200px; border-radius: 50%; border: none; 
+            background: var(--green); color: white; font-size: 24px; font-weight: bold;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6); cursor: pointer; margin-top: 40px;
+            transition: all 0.2s ease; -webkit-tap-highlight-color: transparent;
         }
-        #recordBtn:active { transform: scale(0.95); }
-        h1 { margin-bottom: 5px; font-size: 28px; }
-        h2 { font-weight: 300; color: #b3b3b3; margin-top: 20px; padding: 0 20px; min-height: 50px; font-size: 18px; }
+        #recordBtn:active { transform: scale(0.92); filter: brightness(1.2); }
+        #status { font-weight: 300; color: #b3b3b3; margin: 30px 0; min-height: 1.5em; }
+        
+        .history { text-align: left; margin-top: 40px; }
+        .entry { 
+            background: var(--card); padding: 15px; border-radius: 12px; 
+            margin-bottom: 12px; border-left: 5px solid var(--green);
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        .entry b { font-size: 18px; display: block; margin-bottom: 4px; }
+        .entry small { color: #888; }
     </style>
 </head>
 <body>
-    <h1>Bird ID</h1>
-    <button id="recordBtn">LISTEN</button>
-    <h2 id="result">Ready</h2>
+
+    <div class="container">
+        <h1>Bird Journal</h1>
+        <button id="recordBtn">LISTEN</button>
+        <h2 id="status">Ready to Record</h2>
+
+        <div class="history" id="history">
+            <h3>Recent Sightings (Google Sheets)</h3>
+            <!-- Entries will appear here live -->
+        </div>
+    </div>
 
     <script>
+        // YOUR LIVE WEB APP URL
+        const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
+
         const recordBtn = document.getElementById('recordBtn');
-        const resultText = document.getElementById('result');
+        const statusText = document.getElementById('status');
+        const historyDiv = document.getElementById('history');
+        
         let isRecording = false;
         let mediaRecorder;
         let audioChunks = [];
 
         recordBtn.addEventListener('click', async () => {
             if (isRecording) return;
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
@@ -43,14 +67,14 @@
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 mediaRecorder.onstop = () => {
                     const blob = new Blob(audioChunks, { type: 'audio/wav' });
-                    sendToAI(blob);
+                    analyzeAndLog(blob);
                 };
 
                 mediaRecorder.start();
                 isRecording = true;
-                recordBtn.innerText = "LISTENING";
+                recordBtn.innerText = "RECORDING";
                 recordBtn.style.background = "#ff4444";
-                resultText.innerText = "Recording...";
+                statusText.innerText = "Listening for 5 seconds...";
 
                 setTimeout(() => {
                     if (mediaRecorder.state === "recording") {
@@ -58,50 +82,68 @@
                         stream.getTracks().forEach(t => t.stop());
                     }
                 }, 5000);
+
             } catch (err) {
-                resultText.innerText = "Mic Error: " + err.message;
+                statusText.innerText = "Mic Error: Check Permissions";
             }
         });
 
-        async function sendToAI(blob) {
+        async function analyzeAndLog(blob) {
             recordBtn.innerText = "WAIT";
-            resultText.innerText = "Connecting to BirdNET...";
-            
+            statusText.innerText = "Processing sound...";
+
             const formData = new FormData();
-            // Important: The API expects the file to be named 'audio'
             formData.append('audio', blob, 'recording.wav');
 
             try {
-                // Using CORSProxy.io which is the most reliable for binary blobs
-                const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxy = 'https://corsproxy.io/?url=';
-                
-                const response = await fetch(proxy + encodeURIComponent(target), {
+                // 1. Get Identification from BirdNET
+                const birdResp = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://birdnet.cornell.edu/api/v1/analyze'), {
                     method: 'POST',
                     body: formData
                 });
+                const birdData = await birdResp.json();
 
-                if (!response.ok) throw new Error("Server Status: " + response.status);
+                if (birdData.results && birdData.results.length > 0) {
+                    const birdName = birdData.results[0].species_common_name;
+                    const confidence = Math.round(birdData.results[0].confidence * 100);
+                    
+                    statusText.innerText = `${birdName} Identified!`;
 
-                const data = await response.json();
-                
-                if (data.results && data.results.length > 0) {
-                    const bird = data.results[0].species_common_name;
-                    const conf = Math.round(data.results[0].confidence * 100);
-                    resultText.innerText = bird + " (" + conf + "%)";
+                    // 2. Log to Google Sheet
+                    // We use mode: 'no-cors' for Apps Script to avoid browser blocks
+                    fetch(SHEET_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', 
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({
+                            bird: birdName,
+                            confidence: confidence,
+                            audioUrl: "Local Recording"
+                        })
+                    });
+
+                    // 3. Update Local UI
+                    updateUI(birdName, confidence);
+
                 } else {
-                    resultText.innerText = "No bird found. Try again!";
+                    statusText.innerText = "No bird detected. Try again!";
                 }
-
             } catch (e) {
                 console.error(e);
-                // This displays the specific technical error if it fails
-                resultText.innerText = "Technical Error: " + e.message;
+                statusText.innerText = "Connection error. Log failed.";
             } finally {
                 recordBtn.innerText = "LISTEN";
-                recordBtn.style.background = "#1DB954";
+                recordBtn.style.background = "var(--green)";
                 isRecording = false;
             }
+        }
+
+        function updateUI(name, conf) {
+            const entry = document.createElement('div');
+            entry.className = 'entry';
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            entry.innerHTML = `<b>${name} (${conf}%)</b><small>Logged at ${time}</small>`;
+            historyDiv.insertBefore(entry, historyDiv.firstChild.nextSibling);
         }
     </script>
 </body>
