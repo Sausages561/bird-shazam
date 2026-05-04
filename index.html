@@ -59,53 +59,62 @@
 
         async function analyzeAndLog(blob) {
             recordBtn.innerText = "WAIT";
-            statusText.innerText = "Decoding signal...";
+            statusText.innerText = "Transmitting...";
             
             const formData = new FormData();
             formData.append('audio', blob, 'recording.wav');
 
-            try {
-                // Using a dedicated proxy mirror to avoid the HTML wrapper issue
-                const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxy = 'https://api.allorigins.win/raw?url=';
-                
-                const response = await fetch(proxy + encodeURIComponent(target), { 
-                    method: 'POST', 
-                    body: formData 
-                });
-                
-                const rawResponse = await response.text();
-                
-                // Safety check: Find the JSON content inside the string
-                const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-                if (!jsonMatch) throw new Error("Server returned HTML instead of Data. Wait 60s and retry.");
-                
-                const birdData = JSON.parse(jsonMatch[0]);
+            // List of proxies to try in order
+            const proxies = [
+                'https://api.allorigins.win/raw?url=',
+                'https://corsproxy.io/?url='
+            ];
 
-                if (birdData.results && birdData.results.length > 0) {
-                    const name = birdData.results[0].species_common_name;
-                    const conf = Math.round(birdData.results[0].confidence * 100);
-                    statusText.innerText = `${name} (${conf}%)`;
+            const target = 'https://birdnet.cornell.edu/api/v1/analyze';
+            let success = false;
 
-                    fetch(SHEET_URL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Logged`
+            for (let proxy of proxies) {
+                if (success) break;
+                try {
+                    const response = await fetch(proxy + encodeURIComponent(target), { 
+                        method: 'POST', 
+                        body: formData 
                     });
+                    
+                    const rawResponse = await response.text();
+                    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+                    
+                    if (jsonMatch) {
+                        const birdData = JSON.parse(jsonMatch[0]);
+                        if (birdData.results && birdData.results.length > 0) {
+                            const name = birdData.results[0].species_common_name;
+                            const conf = Math.round(birdData.results[0].confidence * 100);
+                            statusText.innerText = `${name} (${conf}%)`;
 
-                    updateUI(name, conf);
-                } else {
-                    statusText.innerText = "No bird detected.";
+                            // Log to Sheet
+                            fetch(SHEET_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: `bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Logged`
+                            });
+
+                            updateUI(name, conf);
+                            success = true;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Proxy failed, trying next...");
                 }
-            } catch (e) { 
-                console.error(e);
-                statusText.innerText = e.message.includes("JSON") ? "Busy Server. Try again." : e.message; 
-            } finally { 
-                recordBtn.innerText = "LISTEN"; 
-                recordBtn.style.background = "var(--green)"; 
-                isRecording = false; 
             }
+
+            if (!success) {
+                statusText.innerText = "Network interference. Try toggling Wi-Fi.";
+            }
+
+            recordBtn.innerText = "LISTEN"; 
+            recordBtn.style.background = "var(--green)"; 
+            isRecording = false; 
         }
 
         function updateUI(name, conf) {
