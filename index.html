@@ -2,20 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saco Bird Logger</title>
+    <title>Saco Bird Test</title>
     <style>
         body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
-        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; }
         #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h1>Saco Bird Logger</h1>
+    <h1>Direct API Test</h1>
     <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
 
     <script>
-        const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
 
@@ -26,27 +25,27 @@
                 const chunks = [];
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Processing 5s Sample...";
+                    status.innerText = "Analyzing Directly...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onloadend = async () => {
-                        const base64 = reader.result.split(',')[1];
-                        await fetch(SHEET_URL, {
+                    
+                    const formData = new FormData();
+                    formData.append('audio', blob);
+
+                    try {
+                        const response = await fetch('https://birdnet.cornell.edu/api/v1/analyze', {
                             method: 'POST',
-                            mode: 'no-cors',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: 'audio=' + encodeURIComponent(base64)
+                            body: formData
                         });
-                        status.innerText = "Check Sheet for Bird ID!";
-                    };
+                        const result = await response.json();
+                        status.innerText = "Result: " + (result.results[0]?.species_common_name || "No Bird Found");
+                    } catch (err) {
+                        status.innerText = "Direct Blocked: " + err.message;
+                    }
                 };
                 recorder.start();
                 btn.style.background = "#ff4444";
-                status.innerText = "Recording...";
-                // Increased to 5 seconds for a valid AI sample
                 setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 5000);
-            } catch (e) { status.innerText = "Mic Error: Check Safari Settings"; }
+            } catch (e) { status.innerText = "Mic Error"; }
         };
     </script>
 </body>
