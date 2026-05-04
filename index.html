@@ -5,104 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saco Bird Logger</title>
     <style>
-        :root { --green: #1DB954; --bg: #121212; --card: #1e1e1e; }
-        body { background: var(--bg); color: white; font-family: -apple-system, sans-serif; text-align: center; padding: 20px; margin: 0; }
-        #recordBtn { 
-            width: 180px; height: 180px; border-radius: 50%; border: none; 
-            background: var(--green); color: white; font-size: 22px; font-weight: bold;
-            margin-top: 40px; -webkit-tap-highlight-color: transparent;
-        }
-        #status { font-weight: 300; color: #b3b3b3; margin: 20px; font-size: 14px; }
-        .history { text-align: left; max-width: 400px; margin: 20px auto; }
-        .entry { background: var(--card); padding: 15px; border-radius: 12px; margin-bottom: 10px; border-left: 5px solid var(--green); }
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
+        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; }
+        #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
     </style>
 </head>
 <body>
     <h1>Bird Logger</h1>
-    <button id="recordBtn">LISTEN</button>
+    <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
-    <div class="history" id="history"></div>
 
     <script>
         const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
-        const recordBtn = document.getElementById('recordBtn');
-        const statusText = document.getElementById('status');
-        const historyDiv = document.getElementById('history');
+        const btn = document.getElementById('btn');
+        const status = document.getElementById('status');
 
-        let isRecording = false;
-        let mediaRecorder;
-        let audioChunks = [];
-
-        recordBtn.onclick = async () => {
-            if (isRecording) return;
+        btn.onclick = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(audioChunks, { type: 'audio/wav' });
-                    analyze(blob);
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+                
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = async () => {
+                    status.innerText = "Processing...";
+                    const blob = new Blob(chunks, { type: 'audio/wav' });
+                    const fd = new FormData();
+                    fd.append('audio', blob, 'rec.wav');
+
+                    try {
+                        // Use a different proxy gateway
+                        const res = await fetch('https://corsproxy.io/?' + encodeURIComponent('https://birdnet.cornell.edu/api/v1/analyze'), {
+                            method: 'POST',
+                            body: fd
+                        });
+                        const data = await res.json();
+                        
+                        if (data.results && data.results[0]) {
+                            const bird = data.results[0].species_common_name;
+                            const conf = Math.round(data.results[0].confidence * 100);
+                            status.innerText = bird + " (" + conf + "%)";
+                            
+                            // Log to Google Sheet
+                            fetch(`${SHEET_URL}?bird=${encodeURIComponent(bird)}&confidence=${conf}&audioUrl=Live`, { mode: 'no-cors' });
+                        } else {
+                            status.innerText = "No birds detected.";
+                        }
+                    } catch (e) {
+                        status.innerText = "Network interference. Try toggling wifi.";
+                    }
                 };
-                mediaRecorder.start();
-                isRecording = true;
-                recordBtn.style.background = "#ff4444";
-                statusText.innerText = "Recording (5s)...";
-                setTimeout(() => { if(mediaRecorder.state === "recording") mediaRecorder.stop(); stream.getTracks().forEach(t=>t.stop()); }, 5000);
-            } catch (e) { statusText.innerText = "Mic access denied."; }
+
+                recorder.start();
+                btn.style.background = "#ff4444";
+                status.innerText = "Recording...";
+                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 5000);
+            } catch (e) { status.innerText = "Mic Error: Allow access in settings."; }
         };
-
-        async function analyze(blob) {
-            statusText.innerText = "Connecting...";
-            recordBtn.style.background = "#444";
-
-            // 1. PHASE ONE: Log to Sheet (We know this works now)
-            try {
-                await fetch(`${SHEET_URL}?bird=Logging-Start&confidence=0&audioUrl=Saco-App`, { mode: 'no-cors' });
-            } catch (e) { console.log("Initial log skipped"); }
-
-            // 2. PHASE TWO: Identify Bird
-            const fd = new FormData();
-            fd.append('audio', blob, 'rec.wav');
-
-            try {
-                // Testing a more direct proxy route
-                const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target);
-                
-                const res = await fetch(proxy, { method: 'POST', body: fd });
-                
-                if (!res.ok) throw new Error("Proxy response not OK");
-
-                const text = await res.text();
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
-                
-                if (!jsonMatch) throw new Error("Invalid Data Format");
-                const json = JSON.parse(jsonMatch[0]);
-
-                if (json.results && json.results[0]) {
-                    const name = json.results[0].species_common_name;
-                    const conf = Math.round(json.results[0].confidence * 100);
-                    statusText.innerText = `${name} (${conf}%)`;
-                    
-                    // Final Sheet Update
-                    fetch(`${SHEET_URL}?bird=${encodeURIComponent(name)}&confidence=${conf}&audioUrl=Success`, { mode: 'no-cors' });
-                    
-                    const div = document.createElement('div');
-                    div.className = 'entry';
-                    div.innerHTML = `<b>${name} (${conf}%)</b><br><small>${new Date().toLocaleTimeString()}</small>`;
-                    historyDiv.prepend(div);
-                } else {
-                    statusText.innerText = "No birds identified.";
-                }
-            } catch (e) {
-                statusText.innerText = "Network Error: " + e.message;
-                console.error(e);
-            } finally {
-                isRecording = false;
-                recordBtn.style.background = "#1DB954";
-            }
-        }
     </script>
 </body>
 </html>
