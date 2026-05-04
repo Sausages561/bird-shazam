@@ -64,8 +64,10 @@ async function analyzeBird(blob) {
         } else {
             resultText.innerText = "No bird found. Try again!";
         }
-    } catch (e) {
-        resultText.innerText = "Server error. Check internet.";
+    } catch (err) {
+        alert("CRITICAL ERROR: " + err.message); // This will pop up on your screen
+        resultText.innerText = "Error: " + err;
+    }
     } finally {
         recordBtn.innerText = "LISTEN";
         recordBtn.style.background = "#1DB954";
