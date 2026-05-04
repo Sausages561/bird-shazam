@@ -5,8 +5,7 @@
     <title>Saco Bird Logger</title>
     <style>
         body { background:#121212; color:white; text-align:center; padding:50px; font-family:sans-serif; }
-        #btn { width:200px; height:200px; border-radius:50%; background:#1DB954; color:white; border:none; font-size:24px; font-weight:bold; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        #status { margin-top:30px; color:#b3b3b3; }
+        #btn { width:200px; height:200px; border-radius:50%; background:#1DB954; color:white; border:none; font-size:24px; font-weight:bold; }
     </style>
 </head>
 <body>
@@ -15,7 +14,8 @@
     <p id="status">Ready</p>
 
     <script>
-        const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec'; 
+        const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
+        const BIRDNET_URL = 'https://birdnet.cornell.edu/api/v1/analyze';
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
 
@@ -24,48 +24,34 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const recorder = new MediaRecorder(stream);
                 const chunks = [];
-                
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Processing Audio...";
+                    status.innerText = "Analyzing...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
                     
-                    reader.onloadend = async () => {
-                        status.innerText = "Uploading to Google...";
-                        const base64Data = reader.result.split(',')[1];
-                        
-                        try {
-                            await fetch(SHEET_URL, {
-                                method: 'POST',
-                                mode: 'no-cors',
-                                body: base64Data // Sending raw base64 string
-                            });
-                            status.innerText = "Sent! Check your Sheet.";
-                        } catch (err) {
-                            status.innerText = "Upload Error";
-                        }
-                    };
-                };
+                    // 1. Talk to Cornell Directly
+                    const formData = new FormData();
+                    formData.append('audio', blob);
 
+                    const response = await fetch(BIRDNET_URL, { method: 'POST', body: formData });
+                    const result = await response.json();
+                    
+                    const bird = result.results?.[0]?.species_common_name || "No bird detected";
+                    const conf = result.results?.[0]?.confidence || 0;
+
+                    // 2. Send the result to your Google Sheet
+                    await fetch(GOOGLE_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        body: JSON.stringify({ bird: bird, conf: Math.round(conf * 100) })
+                    });
+
+                    status.innerText = bird + " (" + Math.round(conf * 100) + "%) logged!";
+                };
                 recorder.start();
                 btn.style.background = "#ff4444";
-                btn.innerText = "STOP";
-                status.innerText = "Recording 3s sample...";
-
-                setTimeout(() => { 
-                    if (recorder.state === "recording") {
-                        recorder.stop(); 
-                        stream.getTracks().forEach(t => t.stop()); 
-                        btn.style.background = "#1DB954"; 
-                        btn.innerText = "LISTEN";
-                    }
-                }, 3000);
-
-            } catch (e) { 
-                status.innerText = "Mic Error: Check HTTPS/Permissions";
-            }
+                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 3000);
+            } catch (e) { status.innerText = "Error: " + e.message; }
         };
     </script>
 </body>
