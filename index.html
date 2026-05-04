@@ -2,31 +2,60 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saco Handshake</title>
+    <title>Saco Bird Logger</title>
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
+        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
+    </style>
 </head>
-<body style="background: #121212; color: white; text-align: center; padding: 50px;">
-    <button id="btn" style="padding: 20px 40px; font-size: 20px;">TEST CONNECTION</button>
+<body>
+    <h1>Saco Bird Logger</h1>
+    <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
 
     <script>
-        const SHEET_URL = 'YOUR_GOOGLE_SCRIPT_URL_HERE';
+        // Use the SAME URL that gave you the "Handshake Success"
+        const SHEET_URL = 'YOUR_WORKING_SCRIPT_URL';
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
 
         btn.onclick = async () => {
-            status.innerText = "Sending Ping...";
             try {
-                // Testing a basic connection without the audio payload
-                await fetch(SHEET_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: 'test=ping'
-                });
-                status.innerText = "Check Google Sheet!";
-            } catch (e) {
-                status.innerText = "Connection Failed: " + e.message;
-            }
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = async () => {
+                    status.innerText = "Uploading to Google...";
+                    const blob = new Blob(chunks, { type: 'audio/wav' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = async () => {
+                        const base64 = reader.result.split(',')[1];
+                        
+                        // Using the exact same method that worked for the Ping
+                        const formData = new URLSearchParams();
+                        formData.append('audio', base64);
+
+                        await fetch(SHEET_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: formData
+                        });
+                        status.innerText = "Check Sheet for Bird ID!";
+                    };
+                };
+                recorder.start();
+                btn.style.background = "#ff4444";
+                status.innerText = "Recording (5s)...";
+                setTimeout(() => { 
+                    recorder.stop(); 
+                    stream.getTracks().forEach(t=>t.stop()); 
+                    btn.style.background = "#1DB954"; 
+                }, 5000);
+            } catch (e) { status.innerText = "Mic Error: Check Settings"; }
         };
     </script>
 </body>
