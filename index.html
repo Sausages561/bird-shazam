@@ -5,12 +5,12 @@
     <title>Saco Bird Logger</title>
     <style>
         body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 20px; }
-        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; }
+        #btn { width: 180px; height: 180px; border-radius: 50%; border: none; background: #1DB954; color: white; font-size: 22px; font-weight: bold; margin-top: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         #status { color: #b3b3b3; margin: 20px; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h1>Bird Logger (v3)</h1>
+    <h1>Saco Bird Logger</h1>
     <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
 
@@ -26,29 +26,26 @@
                 const chunks = [];
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Transmitting Small Packet...";
+                    status.innerText = "Processing 5s Sample...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
                     const reader = new FileReader();
                     reader.readAsDataURL(blob);
                     reader.onloadend = async () => {
-                        try {
-                            const base64 = reader.result.split(',')[1];
-                            await fetch(SHEET_URL, {
-                                method: 'POST',
-                                mode: 'no-cors',
-                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                                body: 'audio=' + encodeURIComponent(base64)
-                            });
-                            status.innerText = "Sent! Check Sheet.";
-                        } catch (err) {
-                            status.innerText = "Upload Blocked: " + err.message;
-                        }
+                        const base64 = reader.result.split(',')[1];
+                        await fetch(SHEET_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'audio=' + encodeURIComponent(base64)
+                        });
+                        status.innerText = "Check Sheet for Bird ID!";
                     };
                 };
                 recorder.start();
                 btn.style.background = "#ff4444";
-                status.innerText = "Recording (1s)...";
-                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 1000);
+                status.innerText = "Recording...";
+                // Increased to 5 seconds for a valid AI sample
+                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 5000);
             } catch (e) { status.innerText = "Mic Error: Check Safari Settings"; }
         };
     </script>
