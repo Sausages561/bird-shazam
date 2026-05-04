@@ -14,7 +14,7 @@
             width: 220px; height: 220px; border-radius: 50%; border: none; 
             background: #1DB954; color: white; font-size: 26px; font-weight: bold;
             cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            transition: all 0.2s;
+            transition: transform 0.1s;
         }
         #recordBtn:active { transform: scale(0.95); }
         h1 { margin-bottom: 5px; font-size: 28px; }
@@ -43,14 +43,14 @@
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 mediaRecorder.onstop = () => {
                     const blob = new Blob(audioChunks, { type: 'audio/wav' });
-                    upload(blob);
+                    sendToAI(blob);
                 };
 
                 mediaRecorder.start();
                 isRecording = true;
                 recordBtn.innerText = "LISTENING";
                 recordBtn.style.background = "#ff4444";
-                resultText.innerText = "Listening for 5 seconds...";
+                resultText.innerText = "Recording...";
 
                 setTimeout(() => {
                     if (mediaRecorder.state === "recording") {
@@ -63,17 +63,18 @@
             }
         });
 
-        async function upload(blob) {
+        async function sendToAI(blob) {
             recordBtn.innerText = "WAIT";
-            resultText.innerText = "Sending to AI...";
+            resultText.innerText = "Connecting to BirdNET...";
             
             const formData = new FormData();
+            // Important: The API expects the file to be named 'audio'
             formData.append('audio', blob, 'recording.wav');
 
             try {
-                // Using a different proxy strategy
+                // Using CORSProxy.io which is the most reliable for binary blobs
                 const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxy = 'https://api.allorigins.win/raw?url=';
+                const proxy = 'https://corsproxy.io/?url=';
                 
                 const response = await fetch(proxy + encodeURIComponent(target), {
                     method: 'POST',
@@ -89,13 +90,13 @@
                     const conf = Math.round(data.results[0].confidence * 100);
                     resultText.innerText = bird + " (" + conf + "%)";
                 } else {
-                    resultText.innerText = "No bird identified. Try again!";
+                    resultText.innerText = "No bird found. Try again!";
                 }
 
             } catch (e) {
                 console.error(e);
-                // If it fails, we show exactly what the error is
-                resultText.innerText = "Network Error: " + e.message;
+                // This displays the specific technical error if it fails
+                resultText.innerText = "Technical Error: " + e.message;
             } finally {
                 recordBtn.innerText = "LISTEN";
                 recordBtn.style.background = "#1DB954";
