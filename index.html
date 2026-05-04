@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bird Shazam</title>
+    <title>Bird ID</title>
     <style>
         body { 
             background: #121212; color: white; text-align: center; 
@@ -14,11 +14,11 @@
             width: 220px; height: 220px; border-radius: 50%; border: none; 
             background: #1DB954; color: white; font-size: 26px; font-weight: bold;
             cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            transition: background 0.3s;
+            transition: all 0.2s;
         }
         #recordBtn:active { transform: scale(0.95); }
-        h1 { margin-bottom: 10px; }
-        h2 { font-weight: 300; color: #b3b3b3; margin-top: 25px; padding: 0 20px; min-height: 50px; }
+        h1 { margin-bottom: 5px; font-size: 28px; }
+        h2 { font-weight: 300; color: #b3b3b3; margin-top: 20px; padding: 0 20px; min-height: 50px; font-size: 18px; }
     </style>
 </head>
 <body>
@@ -43,14 +43,14 @@
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 mediaRecorder.onstop = () => {
                     const blob = new Blob(audioChunks, { type: 'audio/wav' });
-                    processBird(blob);
+                    upload(blob);
                 };
 
                 mediaRecorder.start();
                 isRecording = true;
                 recordBtn.innerText = "LISTENING";
                 recordBtn.style.background = "#ff4444";
-                resultText.innerText = "Recording (5s)...";
+                resultText.innerText = "Listening for 5 seconds...";
 
                 setTimeout(() => {
                     if (mediaRecorder.state === "recording") {
@@ -63,26 +63,24 @@
             }
         });
 
-        async function processBird(blob) {
+        async function upload(blob) {
             recordBtn.innerText = "WAIT";
-            resultText.innerText = "Analyzing...";
+            resultText.innerText = "Sending to AI...";
             
             const formData = new FormData();
-            // Naming the file helps the server recognize it as audio
-            formData.append('audio', blob, 'clip.wav');
+            formData.append('audio', blob, 'recording.wav');
 
             try {
-                // Using a different proxy that handles binary data better
+                // Using a different proxy strategy
                 const target = 'https://birdnet.cornell.edu/api/v1/analyze';
-                const proxy = 'https://corsproxy.io/?'; 
+                const proxy = 'https://api.allorigins.win/raw?url=';
                 
                 const response = await fetch(proxy + encodeURIComponent(target), {
                     method: 'POST',
-                    body: formData,
-                    mode: 'cors'
+                    body: formData
                 });
 
-                if (!response.ok) throw new Error("Server busy (" + response.status + ")");
+                if (!response.ok) throw new Error("Server Status: " + response.status);
 
                 const data = await response.json();
                 
@@ -91,12 +89,13 @@
                     const conf = Math.round(data.results[0].confidence * 100);
                     resultText.innerText = bird + " (" + conf + "%)";
                 } else {
-                    resultText.innerText = "No bird detected. Try again!";
+                    resultText.innerText = "No bird identified. Try again!";
                 }
 
             } catch (e) {
                 console.error(e);
-                resultText.innerText = "Network Blocked. Try in Safari/Chrome.";
+                // If it fails, we show exactly what the error is
+                resultText.innerText = "Network Error: " + e.message;
             } finally {
                 recordBtn.innerText = "LISTEN";
                 recordBtn.style.background = "#1DB954";
