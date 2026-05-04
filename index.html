@@ -3,29 +3,34 @@
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saco Link Test</title>
+    <style>
+        body { background:#121212; color:white; text-align:center; padding:50px; font-family:sans-serif; }
+        #btn { padding:20px; font-size:20px; background:#1DB954; color:white; border:none; border-radius:10px; cursor:pointer; }
+    </style>
 </head>
-<body style="background:#121212; color:white; text-align:center; padding:50px;">
+<body>
     <h2>Saco Link Test</h2>
-    <button id="btn" style="padding:20px; font-size:20px;">SEND PING</button>
+    <p>Testing cellular path to Google Sheet</p>
+    <button id="btn">SEND PING</button>
     <p id="status">Ready</p>
 
     <script>
-        // PASTE THE NEW URL FROM THE CLEAN DEPLOYMENT HERE
-        const SHEET_URL = 'YOUR_NEW_URL_HERE'; 
+        // Your specific Google Web App URL
+        const SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec'; 
         
         document.getElementById('btn').onclick = async () => {
             const status = document.getElementById('status');
             status.innerText = "Sending Ping...";
             try {
-                // The most basic POST request possible
+                // Sending a simple string to verify the "wire" is hot
                 await fetch(SHEET_URL, {
                     method: 'POST',
                     mode: 'no-cors',
-                    body: "Ping from Saco"
+                    body: "Handshake from Saco Phone"
                 });
-                status.innerText = "Sent! Check Sheet.";
+                status.innerText = "Sent! Check your Google Sheet.";
             } catch (e) {
-                status.innerText = "Browser Blocked: " + e.message;
+                status.innerText = "Connection Blocked: " + e.message;
             }
         };
     </script>
