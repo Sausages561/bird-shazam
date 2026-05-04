@@ -21,12 +21,18 @@
         btn.onclick = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const recorder = new MediaRecorder(stream);
+                
+                // iPhone Safari specific format detection
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+                                 ? 'audio/webm;codecs=opus' : 'audio/mp4';
+                
+                const recorder = new MediaRecorder(stream, { mimeType });
                 const chunks = [];
+                
                 recorder.ondataavailable = e => chunks.push(e.data);
                 recorder.onstop = async () => {
-                    status.innerText = "Transmitting to Proxy...";
-                    const blob = new Blob(chunks, { type: 'audio/wav' });
+                    status.innerText = "Transmitting...";
+                    const blob = new Blob(chunks, { type: mimeType });
                     const reader = new FileReader();
                     reader.readAsDataURL(blob);
                     reader.onloadend = async () => {
@@ -36,13 +42,18 @@
                             mode: 'no-cors',
                             body: base64Data
                         });
-                        status.innerText = "Sent! Check sheet in 10s.";
+                        status.innerText = "Sent! Wait 10s.";
                     };
                 };
+                
                 recorder.start();
                 btn.style.background = "#ff4444";
-                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 3000);
-            } catch (e) { status.innerText = "Mic Error: " + e.message; }
+                setTimeout(() => { 
+                    recorder.stop(); 
+                    stream.getTracks().forEach(t=>t.stop()); 
+                    btn.style.background = "#1DB954"; 
+                }, 3000);
+            } catch (e) { status.innerText = "Error: " + e.message; }
         };
     </script>
 </body>
