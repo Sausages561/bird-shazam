@@ -10,11 +10,16 @@
 </head>
 <body>
     <h2>Saco Bird Logger</h2>
+    <p>Using CORS Bridge</p>
     <button id="btn">LISTEN</button>
     <p id="status">Ready</p>
 
     <script>
         const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycbw8ORpLgu2kjM0_d5bweCgiJAV6GpAWqHfKMhjAc2X-3QY4rbqtx7DWQkmISif8Kw59/exec';
+        // This proxy bridges the gap between your phone and Cornell
+        const PROXY_URL = 'https://cors-anywhere.herokuapp.com/';
+        const BIRDNET_URL = 'https://birdnet.cornell.edu/api/v1/analyze';
+        
         const btn = document.getElementById('btn');
         const status = document.getElementById('status');
 
@@ -24,45 +29,37 @@
                 const recorder = new MediaRecorder(stream);
                 const chunks = [];
                 recorder.ondataavailable = e => chunks.push(e.data);
-                
                 recorder.onstop = async () => {
-                    status.innerText = "Analyzing Signal...";
+                    status.innerText = "Crossing Bridge...";
                     const blob = new Blob(chunks, { type: 'audio/wav' });
                     const formData = new FormData();
                     formData.append('audio', blob);
 
-                    // Talking to BirdNET directly from your iPhone
                     try {
-                        const response = await fetch('https://birdnet.cornell.edu/api/v1/analyze', {
-                            method: 'POST',
-                            body: formData
+                        const response = await fetch(PROXY_URL + BIRDNET_URL, { 
+                            method: 'POST', 
+                            body: formData,
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
                         });
                         const result = await response.json();
                         const bird = result.results?.[0]?.species_common_name || "No bird detected";
                         const conf = Math.round((result.results?.[0]?.confidence || 0) * 100);
 
-                        status.innerText = "Found: " + bird + ". Logging...";
-
-                        // Now send just the bird name to Google
+                        status.innerText = "Logging: " + bird;
                         await fetch(GOOGLE_URL, {
                             method: 'POST',
                             mode: 'no-cors',
                             body: JSON.stringify({ bird: bird, conf: conf })
                         });
                         status.innerText = bird + " (" + conf + "%) Saved!";
-                    } catch (apiErr) {
-                        status.innerText = "API Connection Blocked";
+                    } catch (err) {
+                        status.innerText = "Bridge Closed. See Instructions.";
                     }
                 };
-
                 recorder.start();
                 btn.style.background = "#ff4444";
-                setTimeout(() => { 
-                    recorder.stop(); 
-                    stream.getTracks().forEach(t=>t.stop()); 
-                    btn.style.background = "#1DB954"; 
-                }, 3000);
-            } catch (e) { status.innerText = "Mic Error: " + e.message; }
+                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 3000);
+            } catch (e) { status.innerText = "Mic Error"; }
         };
     </script>
 </body>
