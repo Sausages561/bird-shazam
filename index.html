@@ -2,44 +2,31 @@
 <html>
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saco Bird Lite</title>
+    <title>Saco Link Test</title>
 </head>
-<body style="background:#121212; color:white; text-align:center; padding:50px; font-family:sans-serif;">
-    <h2>Saco Bird Lite</h2>
-    <button id="btn" style="width:150px; height:150px; border-radius:50%; background:#1DB954; color:white; border:none; font-size:20px;">LISTEN</button>
+<body style="background:#121212; color:white; text-align:center; padding:50px;">
+    <h2>Saco Link Test</h2>
+    <button id="btn" style="padding:20px; font-size:20px;">SEND PING</button>
     <p id="status">Ready</p>
 
     <script>
-        const SHEET_URL = 'YOUR_GOOGLE_SCRIPT_URL';
-        const btn = document.getElementById('btn');
-        const status = document.getElementById('status');
-
-        btn.onclick = async () => {
+        // PASTE THE NEW URL FROM THE CLEAN DEPLOYMENT HERE
+        const SHEET_URL = 'YOUR_NEW_URL_HERE'; 
+        
+        document.getElementById('btn').onclick = async () => {
+            const status = document.getElementById('status');
+            status.innerText = "Sending Ping...";
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const recorder = new MediaRecorder(stream);
-                const chunks = [];
-                recorder.ondataavailable = e => chunks.push(e.data);
-                recorder.onstop = async () => {
-                    status.innerText = "Sending 1s clip...";
-                    const blob = new Blob(chunks, { type: 'audio/wav' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onloadend = async () => {
-                        const base64 = reader.result.split(',')[1];
-                        await fetch(SHEET_URL, {
-                            method: 'POST',
-                            mode: 'no-cors',
-                            body: JSON.stringify({ audio: base64 })
-                        });
-                        status.innerText = "Sent! Check Sheet.";
-                    };
-                };
-                recorder.start();
-                btn.style.background = "#ff4444";
-                // 1 SECOND RECORDING ONLY
-                setTimeout(() => { recorder.stop(); stream.getTracks().forEach(t=>t.stop()); btn.style.background = "#1DB954"; }, 1000);
-            } catch (e) { status.innerText = "Error: " + e.message; }
+                // The most basic POST request possible
+                await fetch(SHEET_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: "Ping from Saco"
+                });
+                status.innerText = "Sent! Check Sheet.";
+            } catch (e) {
+                status.innerText = "Browser Blocked: " + e.message;
+            }
         };
     </script>
 </body>
